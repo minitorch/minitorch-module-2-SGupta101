@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, List, Tuple
 
 from typing_extensions import Protocol
+from collections import defaultdict
 
 # ## Task 1.1
 # Central Difference calculation
@@ -22,7 +23,10 @@ def central_difference(f: Any, *vals: Any, arg: int = 0, epsilon: float = 1e-6) 
     Returns:
         An approximation of $f'_i(x_0, \ldots, x_{n-1})$
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    def _modify_arg(e):
+        return [x + e if i == arg else x for i, x in enumerate(vals)]
+
+    return (f(*_modify_arg(epsilon)) - f(*_modify_arg(-epsilon))) / (2 * epsilon)
 
 
 variable_count = 1
@@ -60,7 +64,25 @@ def topological_sort(variable: Variable) -> Iterable[Variable]:
     Returns:
         Non-constant Variables in topological order starting from the right.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    visited = set()  # Set to track visited nodes by unique_id
+    order = []    # List to store nodes in topological order
+
+    def dfs(v: Variable):
+        if v.unique_id in visited:
+            return
+        visited.add(v.unique_id)
+        # Recursively visit all parent nodes (dependencies)
+        for parent in v.parents:
+            if not parent.is_constant():
+                dfs(parent)
+        # Append the node only after all dependencies are visited
+        order.append(v)
+
+    # Start the DFS from the final variable
+    dfs(variable)
+    
+    # Return the order in reverse since we want it from the starting nodes to the final node
+    return reversed(order)
 
 
 def backpropagate(variable: Variable, deriv: Any) -> None:
@@ -74,7 +96,28 @@ def backpropagate(variable: Variable, deriv: Any) -> None:
 
     No return. Should write to its results to the derivative values of each leaf through `accumulate_derivative`.
     """
-    raise NotImplementedError("Need to include this file from past assignment.")
+    # Step 1: Get topological order of variables for backpropagation
+    topo_order = topological_sort(variable)
+
+    # Step 2: Initialize derivatives dictionary, using unique_id as the key
+    derivatives = defaultdict(float)
+    derivatives[variable.unique_id] = deriv  # The derivative of the output node w.r.t itself is 1.0
+
+    # Step 3: Traverse in reverse topological order to propagate gradients
+    for v in topo_order:
+        if v.unique_id not in derivatives:  # Skip nodes with no gradient to propagate
+            continue
+
+        current_derivative = derivatives[v.unique_id]
+
+        # If the variable has parents, apply the chain rule to propagate derivatives
+        for parent, grad in v.chain_rule(current_derivative):
+            if parent.is_leaf():
+                # Accumulate the derivative directly for leaf nodes
+                parent.accumulate_derivative(grad)
+            else:
+                # Accumulate gradient for each parent node
+                derivatives[parent.unique_id] += grad
 
 
 @dataclass
